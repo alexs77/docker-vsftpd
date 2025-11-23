@@ -26,7 +26,7 @@ RUN mkdir -p /etc/vsftpd ${USER_CONFIG_DIR} /var/run/vsftpd/empty /home/virtual 
     && echo "account required pam_permit.so" >> ${PAM_FILE}
 
 # Copy configuration files
-COPY --chmod=644 *.conf /etc/vsftpd/
+COPY --chmod=644 conf/*.conf /etc/vsftpd/
 
 # Copy and set permissions for entrypoint in one step
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
