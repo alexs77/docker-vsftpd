@@ -234,13 +234,17 @@ for VARIABLE in $(env); do
         fi
 
         # make sure the virtual home directory exists
+        # Get the user's actual group (may differ from username when sharing UIDs)
+        user_gid="$(getent passwd "$username" | cut -d':' -f4)"
+        user_group="$(getent group "$user_gid" | cut -d':' -f1)"
+
         if [ ! -d "$VSFTPD_USER_HOME_DIR" ]; then
             mkdir -p "$VSFTPD_USER_HOME_DIR"
-            chown "$username:$username" "$VSFTPD_USER_HOME_DIR"
+            chown "$username:$user_group" "$VSFTPD_USER_HOME_DIR"
             chmod 755 "$VSFTPD_USER_HOME_DIR"
         else
             # Directory already exists, set permissions anyway
-            chown "$username:$username" "$VSFTPD_USER_HOME_DIR"
+            chown "$username:$user_group" "$VSFTPD_USER_HOME_DIR"
             chmod 755 "$VSFTPD_USER_HOME_DIR"
         fi
 
