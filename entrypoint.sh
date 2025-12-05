@@ -222,14 +222,22 @@ for VARIABLE in $(env); do
 
         setftpconfigsetting "guest_username" "$username" "$USER_CONFIG_FILE"
 
-        if [ -d "$VSFTPD_USER_HOME_DIR" ]; then
+        # ensure FTP root exists if explicitly set
+        if [ -n "$VSFTPD_USER_HOME_DIR" ]; then
+            # get owning group for the mapped system user
+            user_gid="$(getent passwd "$username" | cut -d':' -f4)"
+            user_group="$(getent group "$user_gid" | cut -d':' -f1)"
+
+            [[ ! -d "$VSFTPD_USER_HOME_DIR" ]] && install -d -m 0755 -o "$username" -g "$user_group" "$VSFTPD_USER_HOME_DIR"
+
+            # always set local_root to the env value
             setftpconfigsetting "local_root" "$VSFTPD_USER_HOME_DIR" "$USER_CONFIG_FILE"
         else
             usersubtoken="$(cat "$USER_CONFIG_FILE" /etc/vsftpd/vsftpd.conf | grep -m1 -Gi "^user_sub_token=" | cut -d'=' -f2)"
             VSFTPD_USER_HOME_DIR="$(cat "$USER_CONFIG_FILE" /etc/vsftpd/vsftpd.conf | grep -m1 -Gi "^local_root=" | cut -d'=' -f2)"
 
-            if [ ! -z "$usersubtoken" ]; then
-                VSFTPD_USER_HOME_DIR="$(echo $VSFTPD_USER_HOME_DIR | sed "s/$usersubtoken/$VSFTPD_USER_NAME/")"
+            if [ -n "$usersubtoken" ]; then
+                VSFTPD_USER_HOME_DIR="$(echo "$VSFTPD_USER_HOME_DIR" | sed "s/$usersubtoken/$VSFTPD_USER_NAME/")"
             fi
         fi
 
