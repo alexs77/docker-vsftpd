@@ -28,14 +28,16 @@ setfolderpermissions() {
 }
 
 createuser() {
-  if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+  if [ $# -lt 1 ] || [ $# -gt 3 ]; then
     echo "Creates a system user (and group) from the given parameter if they don't exist."
-    echo "Usage: createuser <id> [<name>] OR"
-    echo "       createuser <name>"
-    echo ""
-    echo "When <id> is numeric and <name> is provided, creates a user with that specific"
-    echo "UID, allowing multiple users to share the same UID (useful for file permissions)."
+    echo "Usage: createuser <id> [<name>] [<home_dir>] OR"
+    echo "       createuser <name> [<home_dir>]"
     return 1
+  fi
+
+  local home_dir=""
+  if [ $# -eq 3 ]; then
+    home_dir="${3}"
   fi
 
   # check if we were given a numeric ID
@@ -76,11 +78,11 @@ createuser() {
     if [ ! -z "${existing_user}" ]; then
       # A user with this UID exists, create a new user with non-unique UID
       # This allows multiple FTP users to share the same UID for file permissions
-      useradd --uid="${target_uid}" --gid="${groupid}" --non-unique --create-home "${username}" > /dev/null 2>&1
+      useradd --uid="${target_uid}" --gid="${groupid}" --non-unique --home-dir "${home_dir}" --create-home "${username}" > /dev/null 2>&1
     else
       # No user with this UID, create normally
       # Use useradd without --system to avoid SYS_UID_MAX warnings for UIDs > 999
-      useradd --uid="${target_uid}" --gid="${groupid}" --create-home "${username}" > /dev/null 2>&1
+      useradd --uid="${target_uid}" --gid="${groupid}" --home-dir "${home_dir}" --create-home "${username}" > /dev/null 2>&1
     fi
 
     # Set write permissions for newly created users
@@ -238,7 +240,7 @@ for VARIABLE in $(env); do
 
     # make sure the user ID is actually a number before setting it
     if [[ "${VSFTPD_USER_ID}" =~ ^[0-9]+$ ]] ; then
-      username="$(createuser "${VSFTPD_USER_ID}" "${VSFTPD_USER_NAME}")"
+      username="$(createuser "${VSFTPD_USER_ID}" "${VSFTPD_USER_NAME}" "${VSFTPD_USER_HOME_DIR}")"
     else
       # make sure a system user exists for the username
       # that the new user is supposed to operate as.
