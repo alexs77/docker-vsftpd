@@ -8,7 +8,7 @@ customisation.
 This Docker image provides a **vsftpd** server, incorporating the
 following core features:
 
-- Based on the official **`debian:bookworm-slim`** image.
+- Based on the **`debian:bookworm-slim`** image.
 - Support for **Virtual Users**, allowing the specification of a
     custom home directory (`local_root`) and associated system user
     ID (`FTP_UID`).
@@ -35,6 +35,9 @@ For reference, their Docker registry page is available at
       - [`VSFTPD_USER_[0-9]+`](#vsftpd_user_0-9)
         - [Examples](#examples)
         - [Caveats](#caveats)
+      - [`VSFTPD_CONF_*`](#vsftpd_conf_)
+        - [Examples](#examples-1)
+      - [`VSFTPD_CONF`](#vsftpd_conf)
       - [`PASV_ADDRESS`](#pasv_address)
         - [Common Values](#common-values)
       - [`PASV_MIN_PORT`](#pasv_min_port)
@@ -42,11 +45,6 @@ For reference, their Docker registry page is available at
   - [Ports](#ports)
   - [Volumes](#volumes)
     - [Logging](#logging)
-    - [Considerations](#considerations)
-    - [Named Volumes](#named-volumes)
-  - [Example Deployment](#example-deployment)
-  - [Using Environment Variables with Docker Compose](#using-environment-variables-with-docker-compose)
-  - [Links](#links)
 
 ## Configuration
 
@@ -91,6 +89,43 @@ arbitrary number of virtual FTP users.
 - **Writable Root:** The container configures
     `allow_writeable_chroot=YES` in the default user configuration.
 
+#### `VSFTPD_CONF_*`
+
+These variables allow you to set arbitrary vsftpd configuration
+options without modifying configuration files.
+
+- **Pattern:** Any environment variable prefixed with `VSFTPD_CONF_`
+    will be automatically converted to a vsftpd configuration
+    directive.
+- **Processing:** The prefix `VSFTPD_CONF_` is stripped, the
+    remaining name is converted to lowercase, and the result is
+    written to the vsftpd configuration file.
+- **Target file:** The configuration file path is determined by the
+    `VSFTPD_CONF` variable (defaults to `/etc/vsftpd/vsftpd.conf`).
+
+##### Examples
+
+- `VSFTPD_CONF_DUAL_LOG_ENABLE=YES` - Sets `dual_log_enable=YES` in
+    the vsftpd configuration, enabling dual logging mode.
+- `VSFTPD_CONF_MAX_CLIENTS=50` - Sets `max_clients=50`, limiting the
+    maximum number of simultaneous clients.
+- `VSFTPD_CONF_IDLE_SESSION_TIMEOUT=600` - Sets
+    `idle_session_timeout=600`, terminating idle sessions after 10
+    minutes.
+- `VSFTPD_CONF_WRITE_ENABLE=NO` - Sets `write_enable=NO`, creating a
+    read-only FTP server.
+
+**Note:** These settings are applied during container startup and
+will override any existing values in the configuration file.
+
+#### `VSFTPD_CONF`
+
+- **Default value:** `/etc/vsftpd/vsftpd.conf`
+- **Accepted values:** A valid file path within the container.
+- **Description:** Specifies the vsftpd configuration file to which
+    `VSFTPD_CONF_*` variables will write their settings. This allows
+    you to target a custom configuration file if needed.
+
 #### `PASV_ADDRESS`
 
 - **Accepted values:** The DNS name or IP address used by the FTP
@@ -100,11 +135,15 @@ arbitrary number of virtual FTP users.
     connections. Setting an IP address is recommended, as the
     container's DNS resolution may not be identical to the Docker
     host's.
-- **Note:** This parameter is **required** for proper FTP operation
-    since only passive mode is supported. vsftpd will automatically
+- **Notes:**
+  - This parameter is **required** for proper FTP operation since
+    only passive mode is supported. vsftpd will automatically
     advertise the internal Docker IP of the interface on which the
     connection was received, which is usually unreachable from the
     client host.
+  - It used to be a dedicated environment variable, but can now also
+    be set via `VSFTPD_CONF_PASV_ADDRESS` for consistency with other
+    vsftpd settings.
 
 ##### Common Values
 
@@ -174,119 +213,3 @@ directory inside the container:
 
 To persist logs on the host system and enable access outside the
 container, mount the log directory as a volume:
-
-```text
--v ./logs:/var/log/vsftpd
-```
-
-You can then monitor logs in real-time from the host:
-
-```shell
-tail -f ./logs/vsftpd.log
-tail -f ./logs/xferlog
-```
-
-### Considerations
-
-When mounting host folders, the directory mounted must possess the
-correct permissions. The directory owner/group IDs on the host must
-match the **system user ID** (`FTP_UID`) that the FTP user is
-operating under. For instance, if `VSFTPD_USER_1=user1:pass:33:` is
-defined, any mounted folders must be owned by the user with UID `33`
-on the host for the FTP user to access them.
-
-### Named Volumes
-
-Using **named volumes** offers a significant performance advantage
-over direct host-to-container shared folder mounting. Named volumes
-are fully supported and can be concurrently attached to multiple
-containers, enabling data sharing between this FTP server and other
-application containers (e.g., a web server or database).
-
-## Example Deployment
-
-The pre-built image is available from Docker Hub. Pull it using:
-
-```shell
-docker pull alexs77/vsftpd:latest
-```
-
-A simple deployment, using the default user configuration, can be
-launched with `docker run`:
-
-```shell
-docker run -d \
-    --name vsftpd \
-    -e "PASV_ADDRESS=<Your_External_IP>" \
-    -e "VSFTPD_USER_1=hello:world:33:/var/www/html" \
-    -e "VSFTPD_USER_2=mysql:mysql:999:/var/lib/mysql" \
-    -v /path/to/host/html:/var/www/html \
-    -v /path/to/host/mysql:/var/lib/mysql \
-    -v /path/to/host/logs:/var/log/vsftpd \
-    -p "21:21" \
-    -p "30000-30009:30000-30009" \
-    --restart=always \
-    alexs77/vsftpd:latest
-```
-
-For more complex or multi-container setups, a `docker-compose.yaml`
-file is recommended:
-
-```yaml
-services:
-  vsftpd:
-    image: alexs77/vsftpd:latest
-    container_name: vsftpd
-    restart: always
-    env_file:
-      - .env
-    ports:
-      - "21:21"
-      - "30000-30009:30000-30009"
-    environment:
-      LOG_STDOUT: "Yes"
-    volumes:
-      - ftp-home:/home/virtual
-      - ./logs:/var/log/vsftpd
-      - ./conf/default_user.conf:/etc/vsftpd/default_user.conf:ro
-
-volumes:
-  ftp-home:
-    name: ftp-home
-    external: true
-```
-
-## Using Environment Variables with Docker Compose
-
-A crucial consideration for the **`VSFTPD_USER_[0-9]+`** environment
-variables within a `docker-compose.yaml` is the optional nature of
-the final parameter (the root directory). If the final parameter is
-omitted, the variable string will end with a colon (`:`), which has
-a specific interpretation in the YAML format (representing a
-dictionary key without a value).
-
-To correctly define these variables when the root directory is not
-specified, you **must** use the explicit *dictionary method* for
-environment variables, as illustrated below, or use an external
-`.env` file:
-
-```yaml
-  services:
-    vsftpd:
-      # ... other configuration ...
-      environment:
-        PASV_ADDRESS: 10.0.75.1
-        VSFTPD_USER_1: "hello:world:33:"
-        # Note the quotes around the value to prevent YAML parsing errors.
-```
-
-## Links
-
-- **GitHub Repository:**
-    [`alexs77/docker-vsftpd`](https://github.com/alexs77/docker-vsftpd)
-- **Docker Hub:**
-    [`alexs77/vsftpd`](https://hub.docker.com/r/alexs77/vsftpd)
-- **Original Repository:**
-    [`wildscamp/docker-vsftpd`](https://github.com/wildscamp/docker-vsftpd)
-- **Original Docker Registry:**
-    [`wildscamp/vsftpd`](https://hub.docker.com/r/wildscamp/vsftpd/)

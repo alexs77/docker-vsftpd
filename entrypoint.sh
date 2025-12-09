@@ -151,7 +151,7 @@ cat << EOB
  *************************************************
  *                                               *
  *  Docker image: alexs77/vsftpd                 *
- *  [https://github.com/alexs77/docker-vsftpd](https://github.com/alexs77/docker-vsftpd)     *
+ *  https://github.com/alexs77/docker-vsftpd     *
  *                                               *
  *************************************************
 
@@ -256,7 +256,6 @@ cat << EOB
  USER SETTINGS
  ---------------
  . FTP User: ${VSFTPD_USER_NAME}
- . FTP Password: ${VSFTPD_USER_PASS}
  . System User: ${username}
  . System UID: ${VSFTPD_USER_ID}
  . FTP Home Dir: ${VSFTPD_USER_HOME_DIR}
