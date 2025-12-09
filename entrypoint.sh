@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Default config path if VSFTPD_CONF is not set
+: "${VSFTPD_CONF:=/etc/vsftpd/vsftpd.conf}"
+
 ##
 # Generate a random sixteen-character
 # string of alphabetical characters
@@ -142,7 +145,35 @@ setftpconfigsetting() {
   fi
 }
 
-setftpconfigsetting "pasv_address" "${PASV_ADDRESS}" /etc/vsftpd/vsftpd.conf
+# Track if any VSFTPD_CONF_* variables were found
+vsftpd_conf_count=0
+
+# Iterate over env and apply VSFTPD_CONF_* settings
+while IFS='=' read -r env_name env_value; do
+  case "${env_name}" in
+    VSFTPD_CONF_*)
+      if [ ${vsftpd_conf_count} -eq 0 ]; then
+        echo ""
+        echo " VSFTPD CONFIGURATION SETTINGS"
+        echo " ------------------------------"
+      fi
+      key="${env_name#VSFTPD_CONF_}"      # strip prefix
+      key="${key,,}"                      # to lowercase (bash-specific)
+      setftpconfigsetting "${key}" "${env_value}" "${VSFTPD_CONF}"
+      echo " . ${key}=${env_value}"
+      ((vsftpd_conf_count++))
+      ;;
+  esac
+done < <(env)
+
+if [ ${vsftpd_conf_count} -gt 0 ]; then
+  echo ""
+fi
+
+# Backward compatibility for PASV_ADDRESS
+# existing explicit pasv_address setting can now be dropped or kept; if you keep it,
+# it will be overridden by VSFTPD_CONF_PASV_ADDRESS, if present.
+setftpconfigsetting "pasv_address" "${PASV_ADDRESS}" "${VSFTPD_CONF}"
 
 # make sure the passwd file exists
 touch "${PASSWD_FILE}"
