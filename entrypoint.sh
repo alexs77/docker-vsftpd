@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+mkdir -p "/var/log/vsftpd"
+ENTRYPOINT_LOGFILE="/var/log/vsftpd/entrypoint.log"
+echo "$(date '+%Y-%m-%d %H:%M:%S') - entrypoint.sh started" >> "${ENTRYPOINT_LOGFILE}"
+
 # Default config path if VSFTPD_CONF is not set
 : "${VSFTPD_CONF:=/etc/vsftpd/vsftpd.conf}"
 
@@ -13,7 +17,7 @@ randname() {
 }
 
 setfolderpermissions() {
-  if [ $# -ne 2 ] || [ ! -e "${2}" ] || [ -z "$(getent passwd "${1}")" ]; then
+  if [[ $# -ne 2 ]] || [[ ! -e "${2}" ]] || [[ -z "$(getent passwd "${1}")" ]]; then
     echo "Set the permissions on a folder based on a user and it's associated group."
     echo "Usage: setfolderpermissions <username> <folder>"
     return 1
@@ -23,12 +27,12 @@ setfolderpermissions() {
   usergroupid="$(getent passwd "${1}" | cut -d':' -f4)"
   usergroup="$(getent group "${usergroupid}" | cut -d':' -f1)"
 
-  echo "Chown: ${username}:${usergroup} (${usergroupid}) ${2}" >> /etc/vsftpd/tmp.txt
+  echo "Chown: ${username}:${usergroup} (${usergroupid}) ${2}" >> "${ENTRYPOINT_LOGFILE}"
   chown "${username}:${usergroup}" "${2}"
 }
 
 createuser() {
-  if [ $# -lt 1 ] || [ $# -gt 3 ]; then
+  if [[ $# -lt 1 ]] || [[ $# -gt 3 ]]; then
     echo "Creates a system user (and group) from the given parameter if they don't exist."
     echo "Usage: createuser <id> [<name>] [<home_dir>] OR"
     echo "       createuser <name> [<home_dir>]"
@@ -36,7 +40,7 @@ createuser() {
   fi
 
   local home_dir=""
-  if [ $# -eq 3 ]; then
+  if [[ $# -eq 3 ]]; then
     home_dir="${3}"
   fi
 
@@ -46,17 +50,17 @@ createuser() {
     local target_uid="${1}"
 
     # Determine username: use provided name if available, otherwise generate one
-    if [ ! -z "${2}" ]; then
+    if [[ ! -z "${2}" ]]; then
       username="${2}"
     else
       username=$(randname)
     fi
 
     # Check if a user with this exact username already exists
-    if [ ! -z "$(getent passwd "${username}")" ]; then
+    if [[ ! -z "$(getent passwd "${username}")" ]]; then
       # User with this name exists, just return it
       homedir="$(getent passwd "${username}" | cut -d':' -f6)"
-      if [ ! -z "${homedir}" ] && [ ! -e "${homedir}" ]; then
+      if [[ ! -z "${homedir}" ]] && [[ ! -e "${homedir}" ]]; then
         mkdir -p "${homedir}"
         chmod 755 "${homedir}"
       fi
@@ -67,31 +71,35 @@ createuser() {
 
     # check if a group with the given ID exists and create one if not
     groupid="$(getent group "${target_uid}" | cut -d':' -f3)"
-    if [ -z "${groupid}" ]; then
+    if [[ -z "${groupid}" ]]; then
       # Use groupadd without --system to avoid SYS_GID_MAX warnings for GIDs > 999
-      groupadd --gid "${target_uid}" "${username}" > /dev/null 2>&1
+      groupadd --gid "${target_uid}" "${username}" >> "${ENTRYPOINT_LOGFILE}" 2>&1
       groupid="${target_uid}"
     fi
 
     # Check if a user with this UID already exists
     existing_user="$(getent passwd "${target_uid}" | cut -d':' -f1)"
-    if [ ! -z "${existing_user}" ]; then
+    if [[ ! -z "${existing_user}" ]]; then
       # A user with this UID exists, create a new user with non-unique UID
       # This allows multiple FTP users to share the same UID for file permissions
-      if [ ! -z "${home_dir}" ]; then
-        useradd --uid="${target_uid}" --gid="${groupid}" --non-unique --home-dir "${home_dir}" --create-home "${username}" > /dev/null 2>&1
+      if [[ ! -z "${home_dir}" ]]; then
+        useradd --uid="${target_uid}" --gid="${groupid}" --non-unique --home-dir "${home_dir}" --create-home "${username}" >> "${ENTRYPOINT_LOGFILE}" 2>&1
       else
-        useradd --uid="${target_uid}" --gid="${groupid}" --non-unique "${username}" > /dev/null 2>&1
+        useradd --uid="${target_uid}" --gid="${groupid}" --non-unique "${username}" >> "${ENTRYPOINT_LOGFILE}" 2>&1
       fi
     else
       # No user with this UID, create normally
       # Use useradd without --system to avoid SYS_UID_MAX warnings for UIDs > 999
-      useradd --uid="${target_uid}" --gid="${groupid}" --home-dir "${home_dir}" --create-home "${username}" > /dev/null 2>&1
+      if [[ ! -z "${home_dir}" ]]; then
+        useradd --uid="${target_uid}" --gid="${groupid}" --home-dir "${home_dir}" --create-home "${username}" >> "${ENTRYPOINT_LOGFILE}" 2>&1
+      else
+        useradd --uid="${target_uid}" --gid="${groupid}" "${username}" >> "${ENTRYPOINT_LOGFILE}" 2>&1
+      fi
     fi
 
     # Set write permissions for newly created users
     homedir="$(getent passwd "${username}" | cut -d':' -f6)"
-    if [ ! -z "${homedir}" ] && [ -e "${homedir}" ]; then
+    if [[ ! -z "${homedir}" ]] && [[ -e "${homedir}" ]]; then
       chmod 755 "${homedir}"
     fi
   else
@@ -99,9 +107,9 @@ createuser() {
     username="${1}"
 
     # Check if this user already exists
-    if [ ! -z "$(getent passwd "${username}")" ]; then
+    if [[ ! -z "$(getent passwd "${username}")" ]]; then
       homedir="$(getent passwd "${username}" | cut -d':' -f6)"
-      if [ ! -z "${homedir}" ] && [ ! -e "${homedir}" ]; then
+      if [[ ! -z "${homedir}" ]] && [[ ! -e "${homedir}" ]]; then
         mkdir -p "${homedir}"
         chmod 755 "${homedir}"
       fi
@@ -111,8 +119,8 @@ createuser() {
     fi
 
     groupid="$(getent group "${1}" | cut -d':' -f3)"
-    if [ -z "${groupid}" ]; then
-      addgroup --system "${username}" > /dev/null
+    if [[ -z "${groupid}" ]]; then
+      groupadd --system "${username}" >> "${ENTRYPOINT_LOGFILE}" 2>&1
       groupid="$(getent group "${username}" | cut -d':' -f3)"
     fi
 
@@ -120,15 +128,15 @@ createuser() {
     # that user's UID to be the same as the group ID. If one does exist, we
     # just create a user with an automatic UID but assign the GID to be the
     # same as the group ID we identified above.
-    if [ ! -z "$(getent passwd "${groupid}")" ]; then
-      adduser --system --gid="${groupid}" "${username}" > /dev/null
+    if [[ ! -z "$(getent passwd "${groupid}")" ]]; then
+      useradd --system --gid="${groupid}" "${username}" >> "${ENTRYPOINT_LOGFILE}" 2>&1
     else
-      adduser --system --uid="${groupid}" --gid="${groupid}" "${username}" > /dev/null
+      useradd --system --uid="${groupid}" --gid="${groupid}" "${username}" >> "${ENTRYPOINT_LOGFILE}" 2>&1
     fi
 
     # Set write permissions for newly created users
     homedir="$(getent passwd "${username}" | cut -d':' -f6)"
-    if [ ! -z "${homedir}" ] && [ -e "${homedir}" ]; then
+    if [[ ! -z "${homedir}" ]] && [[ -e "${homedir}" ]]; then
       chmod 755 "${homedir}"
     fi
   fi
@@ -138,13 +146,13 @@ createuser() {
 }
 
 setftpconfigsetting() {
-  if [ $# -ne 3 ] || [ ! -e "${3}" ]; then
+  if [[ $# -ne 3 ]] || [[ ! -e "${3}" ]]; then
     echo "Set an FTP configuration setting in the given file."
     echo "Usage: setftpconfigsetting <setting_name> <setting_value> <config_file>"
     return 1
   fi
 
-  if [ -z "$(grep -m1 -Gi "^${1}=" "${3}")" ]; then
+  if [[ -z "$(grep -m1 -Gi "^${1}=" "${3}")" ]]; then
     echo "${1}=${2}" >> "${3}"
   else
     sed -i "s~^${1}=.*~${1}=${2}~" "${3}"
@@ -158,7 +166,7 @@ vsftpd_conf_count=0
 while IFS='=' read -r env_name env_value; do
   case "${env_name}" in
     VSFTPD_CONF_*)
-      if [ ${vsftpd_conf_count} -eq 0 ]; then
+      if [[ ${vsftpd_conf_count} -eq 0 ]]; then
         echo ""
         echo " VSFTPD CONFIGURATION SETTINGS"
         echo " ------------------------------"
@@ -172,7 +180,7 @@ while IFS='=' read -r env_name env_value; do
   esac
 done < <(env)
 
-if [ ${vsftpd_conf_count} -gt 0 ]; then
+if [[ ${vsftpd_conf_count} -gt 0 ]]; then
   echo ""
 fi
 
@@ -204,7 +212,7 @@ for VARIABLE in $(env); do
     # remove VSFTPD_USER_:digit:= from beginning of variable
     VARIABLE="$(echo "${VARIABLE}" | cut -d'=' -f2)"
 
-    if [ "$(echo "${VARIABLE}" | awk -F ':' '{ print NF }')" -ne 4 ]; then
+    if [[ "$(echo "${VARIABLE}" | awk -F ':' '{ print NF }')" -ne 4 ]]; then
       echo "'${VARIABLE}' user has invalid syntax. Skipping."
       continue
     fi
@@ -214,7 +222,7 @@ for VARIABLE in $(env); do
     VSFTPD_USER_ID="$(echo "${VARIABLE}" | cut -d':' -f3)"
     VSFTPD_USER_HOME_DIR="$(echo "${VARIABLE}" | cut -d':' -f4)"
 
-    if [ -z "${VSFTPD_USER_NAME}" ] || [ -z "${VSFTPD_USER_PASS}" ]; then
+    if [[ -z "${VSFTPD_USER_NAME}" ]] || [[ -z "${VSFTPD_USER_PASS}" ]]; then
       echo "'${VARIABLE}' is missing a username or password. Skipping."
       continue
     fi
@@ -224,7 +232,7 @@ for VARIABLE in $(env); do
     sedr="s~^${VSFTPD_USER_NAME}:.*~${entry}~"
 
     # check if the user exists already in the file
-    if [ ! -z "$(grep -G -i "^${VSFTPD_USER_NAME}:" "${PASSWD_FILE}")" ]; then
+    if [[ ! -z "$(grep -G -i "^${VSFTPD_USER_NAME}:" "${PASSWD_FILE}")" ]]; then
       sed -i "${sedr}" "${PASSWD_FILE}"
     else
       printf "%s:%s\n" "${VSFTPD_USER_NAME}" "$(openssl passwd -1 "${VSFTPD_USER_PASS}")" >> "${PASSWD_FILE}"
@@ -238,7 +246,7 @@ for VARIABLE in $(env); do
     username="$(grep -Gi '^guest_username=' "${USER_CONFIG_FILE}" | cut -d'=' -f2)"
 
     # set username to default if it's still not set to anything
-    if [ -z "${username}" ]; then
+    if [[ -z "${username}" ]]; then
       username="ftp"
     fi
 
@@ -256,7 +264,7 @@ for VARIABLE in $(env); do
     setftpconfigsetting "guest_username" "${username}" "${USER_CONFIG_FILE}"
 
     # ensure FTP root exists if explicitly set
-    if [ -n "${VSFTPD_USER_HOME_DIR}" ]; then
+    if [[ -n "${VSFTPD_USER_HOME_DIR}" ]]; then
       # get owning group for the mapped system user
       user_gid="$(getent passwd "${username}" | cut -d':' -f4)"
       user_group="$(getent group "${user_gid}" | cut -d':' -f1)"
@@ -266,10 +274,10 @@ for VARIABLE in $(env); do
       # always set local_root to the env value
       setftpconfigsetting "local_root" "${VSFTPD_USER_HOME_DIR}" "${USER_CONFIG_FILE}"
     else
-      usersubtoken="$(cat "${USER_CONFIG_FILE}" /etc/vsftpd/vsftpd.conf | grep -m1 -Gi "^user_sub_token=" | cut -d'=' -f2)"
-      VSFTPD_USER_HOME_DIR="$(cat "${USER_CONFIG_FILE}" /etc/vsftpd/vsftpd.conf | grep -m1 -Gi "^local_root=" | cut -d'=' -f2)"
+      usersubtoken="$(cat "${USER_CONFIG_FILE}" "${VSFTPD_CONF}" | grep -m1 -Gi "^user_sub_token=" | cut -d'=' -f2)"
+      VSFTPD_USER_HOME_DIR="$(cat "${USER_CONFIG_FILE}" "${VSFTPD_CONF}" | grep -m1 -Gi "^local_root=" | cut -d'=' -f2)"
 
-      if [ -n "${usersubtoken}" ]; then
+      if [[ -n "${usersubtoken}" ]]; then
         VSFTPD_USER_HOME_DIR="$(echo "${VSFTPD_USER_HOME_DIR}" | sed "s/${usersubtoken}/${VSFTPD_USER_NAME}/")"
       fi
     fi
@@ -279,7 +287,7 @@ for VARIABLE in $(env); do
     user_gid="$(getent passwd "${username}" | cut -d':' -f4)"
     user_group="$(getent group "${user_gid}" | cut -d':' -f1)"
 
-    if [ ! -d "${VSFTPD_USER_HOME_DIR}" ]; then
+    if [[ ! -d "${VSFTPD_USER_HOME_DIR}" ]]; then
       mkdir -p "${VSFTPD_USER_HOME_DIR}"
       chown "${username}:${user_group}" "${VSFTPD_USER_HOME_DIR}"
       chmod 755 "${VSFTPD_USER_HOME_DIR}"
@@ -314,7 +322,7 @@ function vsftpd_stop() {
   echo "Done"
 }
 
-if [ "${1}" == "vsftpd" ]; then
+if [[ "${1}" == "vsftpd" ]]; then
   trap vsftpd_stop SIGINT SIGTERM
   echo "Running ${@}"
   "${@}" &
