@@ -78,7 +78,11 @@ createuser() {
     if [ ! -z "${existing_user}" ]; then
       # A user with this UID exists, create a new user with non-unique UID
       # This allows multiple FTP users to share the same UID for file permissions
-      useradd --uid="${target_uid}" --gid="${groupid}" --non-unique --home-dir "${home_dir}" --create-home "${username}" > /dev/null 2>&1
+      if [ ! -z "${home_dir}" ]; then
+        useradd --uid="${target_uid}" --gid="${groupid}" --non-unique --home-dir "${home_dir}" --create-home "${username}" > /dev/null 2>&1
+      else
+        useradd --uid="${target_uid}" --gid="${groupid}" --non-unique "${username}" > /dev/null 2>&1
+      fi
     else
       # No user with this UID, create normally
       # Use useradd without --system to avoid SYS_UID_MAX warnings for UIDs > 999
