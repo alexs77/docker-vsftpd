@@ -25,6 +25,9 @@ RUN mkdir -p /etc/vsftpd ${USER_CONFIG_DIR} /var/run/vsftpd/empty /home/virtual 
     && echo "auth required pam_pwdfile.so pwdfile ${PASSWD_FILE}" > ${PAM_FILE} \
     && echo "account required pam_permit.so" >> ${PAM_FILE}
 
+# Change useradd default base directory to /home/virtual
+RUN useradd -D -b /home/virtual
+
 # Copy configuration files
 COPY --chmod=644 conf/*.conf /etc/vsftpd/
 
